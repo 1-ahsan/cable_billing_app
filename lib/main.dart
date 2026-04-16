@@ -1,8 +1,9 @@
 import 'package:cable_billing_app/Database/db_helper.dart';
 import 'package:cable_billing_app/Models/Bill.dart';
-import '../models/customer.dart';
+import 'package:cable_billing_app/Models/Customer.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:cable_billing_app/Screens/dashboard_screen.dart';
 
 void main() async{
 
@@ -25,7 +26,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: .fromSeed(seedColor: Colors.deepPurple),
       ),
-      home:  MyHomePage(),
+      home:  DashboardScreen(),
     );
   }
 }

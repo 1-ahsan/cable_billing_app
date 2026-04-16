@@ -1,8 +1,9 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
-import '../models/customer.dart';
-import '../Models/Bill.dart';
+import 'package:cable_billing_app/Models/Customer.dart';
+import 'package:cable_billing_app/Models/Bill.dart';
+
 
 
 class DatabaseHelper {
@@ -158,6 +159,54 @@ class DatabaseHelper {
       where: 'bill_id = ?',
       whereArgs: [billId],
     );
+  }
+
+  // UPDATE: Mark a bill as Unpaid (changes is_paid from 1 back to 0)
+  Future<int> markBillAsUnpaid(int billId) async {
+    final db = await instance.database;
+    return await db.update(
+      'bills',
+      {'is_paid': 0}, // Sets it back to unpaid
+      where: 'bill_id = ?',
+      whereArgs: [billId],
+    );
+  }
+
+  // ==========================================
+  // ADVANCED: GET BILLS WITH CUSTOMER DETAILS
+  // ==========================================
+  Future<List<Map<String, dynamic>>> getBillsWithCustomerDetails(String month) async {
+    final db = await instance.database;
+
+    // We use a raw SQL JOIN to combine two tables into one result!
+    return await db.rawQuery('''
+      SELECT 
+        bills.*, 
+        customers.name, 
+        customers.contact_info, 
+        customers.address 
+      FROM bills
+      INNER JOIN customers ON bills.customer_id = customers.customer_id
+      WHERE bills.billing_month = ?
+    ''', [month]);
+  }
+
+  // Get all bills for a single customer (Sorted newest first)
+  Future<List<Map<String, dynamic>>> getCustomerBillingHistory(int customerId) async {
+    final db = await instance.database;
+
+    return await db.rawQuery('''
+      SELECT 
+        bills.*, 
+        customers.name, 
+        customers.contact_info, 
+        customers.address 
+      FROM bills
+      INNER JOIN customers ON bills.customer_id = customers.customer_id
+      WHERE bills.customer_id = ?
+      ORDER BY bills.bill_id DESC 
+    ''', [customerId]);
+    // NOTE: We order by bill_id DESC. Since IDs auto-increment, the highest ID is always the most recent month!
   }
 
 
