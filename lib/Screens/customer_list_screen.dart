@@ -45,12 +45,14 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
         final nameMatch = customer.name.toLowerCase().contains(enteredKeyword.toLowerCase());
         final idMatch = customer.idCardNumber.contains(enteredKeyword);
         final phoneMatch = customer.contactInfo?.contains(enteredKeyword) ?? false;
+        final codeMatch = customer.connectionCode.contains(enteredKeyword);
 
-        return nameMatch || idMatch || phoneMatch;
+        return nameMatch || idMatch || phoneMatch || codeMatch;
       }).toList();
     }
 
     setState(() {
+
       _foundCustomers = results;
     });
   }
@@ -59,52 +61,57 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   void _sortList(String sortChoice) {
     setState(() {
       _currentSort = sortChoice;
+      _foundCustomers = _allCustomers;
       if (sortChoice == 'Name (A-Z)') {
         _foundCustomers.sort((a, b) => a.name.compareTo(b.name));
-      } else if (sortChoice == 'Fee (High-Low)') {
-        _foundCustomers.sort((a, b) => b.monthlyFee.compareTo(a.monthlyFee));
+      } else if (sortChoice == 'Code') {
+        _foundCustomers.sort((a, b) => a.connectionCode.compareTo(b.connectionCode));
       } else if (sortChoice == 'Latest First') {
         // Since customerId auto-increments, higher ID means newer
         _foundCustomers.sort((a, b) => b.customerId!.compareTo(a.customerId!));
+      } else if(sortChoice == 'Active'){
+        final active = _foundCustomers.where((customer){
+          return customer.isActive == 1;
+        }).toList();
+        _foundCustomers = active;
+      } else if(sortChoice == 'Inactive'){
+        final inactive = _foundCustomers.where((customer){
+          return customer.isActive == 0;
+        }).toList();
+        _foundCustomers = inactive;
       }
     });
   }
 
-  // 4. Delete Confirmation Popup
-  void _confirmDelete(int customerId) {
-    showDialog(
+  void _deactivateCustomer(int id) async {
+    // Standard confirmation dialog
+    bool confirm = await showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Delete Customer?"),
-          content: const Text(
-            "Are you sure you want to delete this customer? This action cannot be undone and will remove all their data.",
-            style: TextStyle(color: Colors.red),
-          ),
-          actions: [
-            TextButton(
-              child: const Text("Cancel"),
-              onPressed: () => Navigator.of(context).pop(), // Close popup
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text("Delete permanently", style: TextStyle(color: Colors.white)),
-              onPressed: () async {
-                await DatabaseHelper.instance.deleteCustomer(customerId);
-                Navigator.of(context).pop(); // Close popup
-                _loadCustomers(); // Refresh the list
+      builder: (context) => AlertDialog(
+        title: const Text('Change Customer State?'),
+        content: const Text('This will change the customer state, but keep their payment history safe.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Change', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    ) ?? false;
 
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Customer Deleted')),
-                  );
-                }
-              },
-            ),
-          ],
-        );
-      },
-    );
+    if (confirm) {
+      await DatabaseHelper.instance.deactivateCustomer(id);
+      _loadCustomers(); // Refresh the list
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Customer Deactivated.')));
+      }
+    }
+  }
+
+
+  Color _getCardColor(int status){
+    if(status == 0){
+      return Colors.grey;
+    }
+    return Colors.white;
   }
 
   @override
@@ -135,7 +142,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                   child: DropdownButtonFormField<String>(
                     value: _currentSort,
                     decoration: const InputDecoration(border: OutlineInputBorder()),
-                    items: ['Latest First', 'Name (A-Z)', 'Fee (High-Low)']
+                    items: ['Latest First', 'Name (A-Z)', 'Code', 'Active','Inactive']
                         .map((choice) => DropdownMenuItem(value: choice, child: Text(choice)))
                         .toList(),
                     onChanged: (value) => _sortList(value!),
@@ -156,6 +163,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
                   // Using a Card makes it look premium and separated
                   return Card(
+                    color: _getCardColor(customer.isActive),
                     elevation: 2,
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     child: ListTile(
@@ -165,9 +173,9 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                       ),
                       title: Text(customer.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text(
-                          'Number: ${customer.contactInfo} | Address: ${customer.address}'
-                              '\nCNIC: ${customer.idCardNumber} | Service: ${customer.serviceType}'
-                              '\nFee: Rs.${customer.monthlyFee}'),
+                          'Phone: ${customer.contactInfo} | Code: ${customer.connectionCode}'
+                              '\nCNIC: ${customer.idCardNumber} | Service: ${customer.serviceType} | Connection Date: ${customer.connectionDate}'
+                              '\nFee: Rs.${customer.monthlyFee} | Address: ${customer.address}'),
                       isThreeLine: true,
 
                       // Edit and Delete Buttons
@@ -198,8 +206,8 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                             },
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _confirmDelete(customer.customerId!),
+                            icon: const Icon(Icons.archive, color: Colors.red),
+                            onPressed: () => _deactivateCustomer(customer.customerId!),
                           ),
                         ],
                       ),

@@ -20,6 +20,8 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
   final _addressController = TextEditingController();
   final _feeController = TextEditingController();
   final _numberController = TextEditingController();
+  final _codeController = TextEditingController();
+  final _fatherController = TextEditingController();
 
   // A variable to hold the dropdown choice
   String _selectedService = 'Cable';
@@ -37,6 +39,10 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         address: _addressController.text,
         serviceType: _selectedService,
         monthlyFee: double.parse(_feeController.text),
+        connectionDate: _formattedDate, // updated
+        connectionCode: _codeController.text, // update 2
+        isActive: 1,
+        fatherName: _fatherController.text,
       );
 
       // Send it to the database!
@@ -67,6 +73,29 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     }
   }
 
+
+  // --- NEW VARIABLES FOR DATE PICKER ---
+  DateTime _selectedDate = DateTime.now();
+  final List<String> _monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  String get _formattedDate {
+    return '${_selectedDate.day} ${_monthNames[_selectedDate.month - 1]} ${_selectedDate.year}';
+  }
+
+  Future<void> _pickConnectionDate() async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(), // Usually can't connect in the future
+    );
+    if (pickedDate != null) {
+      setState(() {
+        _selectedDate = pickedDate;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,6 +114,13 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Customer Name'),
                 validator: (value) => value!.isEmpty ? 'Please enter a name' : null,
+              ),
+              const SizedBox(height: 10),
+
+              TextFormField(
+                controller: _fatherController,
+                decoration: const InputDecoration(labelText: 'Father Name'),
+                validator: (value) => value!.isEmpty ? 'Please enter father name' : null,
               ),
               const SizedBox(height: 10),
 
@@ -127,10 +163,33 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
               const SizedBox(height: 10),
 
               TextFormField(
+                controller: _codeController,
+                decoration: const InputDecoration(labelText: 'Connection Code'),
+                validator: (value) => value!.isEmpty ? 'Please enter the connection code' : null,
+              ),
+              const SizedBox(height: 10),
+
+              TextFormField(
                 controller: _feeController,
                 decoration: const InputDecoration(labelText: 'Monthly Fee (Rs.)'),
                 keyboardType: TextInputType.number,
                 validator: (value) => value!.isEmpty ? 'Please enter the fee' : null,
+              ),
+              const SizedBox(height: 10),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Connection Date: $_formattedDate',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _pickConnectionDate,
+                    icon: const Icon(Icons.calendar_today),
+                    label: const Text('Change Date'),
+                  ),
+                ],
               ),
               const SizedBox(height: 30),
 

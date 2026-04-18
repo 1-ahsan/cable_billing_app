@@ -112,13 +112,15 @@ class _BillingScreenState extends State<BillingScreen> {
     }
 
     for (var customer in allCustomers) {
-      Bill newBill = Bill(
-        customerId: customer.customerId!,
-        billingMonth: _formattedMonth,
-        amountDue: customer.monthlyFee,
-        isPaid: 0,
-      );
-      await DatabaseHelper.instance.insertBill(newBill);
+      if (customer.isActive == 1){
+        Bill newBill = Bill(
+          customerId: customer.customerId!,
+          billingMonth: _formattedMonth,
+          amountDue: customer.monthlyFee,
+          isPaid: 0,
+        );
+        await DatabaseHelper.instance.insertBill(newBill);
+      }
     }
 
     await _loadBills();

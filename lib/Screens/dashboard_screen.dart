@@ -27,22 +27,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
 
-    // Get the formatted string for the current month (e.g., "April 2026")
-    DateTime now = DateTime.now();
-    List<String> monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    String currentMonth = '${monthNames[now.month - 1]} ${now.year}';
+    try {
+      DateTime now = DateTime.now();
+      List<String> monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      String currentMonth = '${monthNames[now.month - 1]} ${now.year}';
 
-    // Ask the database for the numbers
-    final customers = await DatabaseHelper.instance.getAllCustomers();
-    final stats = await DatabaseHelper.instance.getMonthlyBillStats(currentMonth);
-    final income = await DatabaseHelper.instance.getMonthlyIncome(currentMonth);
+      final customers = await DatabaseHelper.instance.getAllCustomers();
+      final stats = await DatabaseHelper.instance.getMonthlyBillStats(currentMonth);
+      final income = await DatabaseHelper.instance.getMonthlyIncome(currentMonth);
 
-    setState(() {
-      _totalCustomers = customers.length;
-      _pendingBills = stats['unpaid'] ?? 0;
-      _totalIncome = income;
-      _isLoading = false;
-    });
+      setState(() {
+        _totalCustomers = customers.length;
+        _pendingBills = stats['unpaid'] ?? 0;
+        _totalIncome = income;
+        _isLoading = false;
+      });
+
+    } catch (e, stackTrace) {
+      // If ANYTHING goes wrong, stop the loading circle and show the exact error!
+      setState(() => _isLoading = false);
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('CRITICAL STARTUP ERROR', style: TextStyle(color: Colors.red)),
+            content: SingleChildScrollView(
+              child: Text('Please take a photo of this and send it to the developer:\n\n$e\n\n$stackTrace'),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK')
+              )
+            ],
+          ),
+        );
+      }
+    }
   }
 
   // 2. A reusable widget for our polished Statistics Cards
@@ -93,6 +115,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
+    );
+  }
+
+
+  // --- NEW: Backup Menu Logic ---
+  void _showBackupMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (BuildContext context) {
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Disaster Recovery', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+
+              // CREATE BACKUP BUTTON
+              ListTile(
+                leading: const Icon(Icons.backup, color: Colors.blue, size: 30),
+                title: const Text('Create Backup File'),
+                subtitle: const Text('Save a copy of your data to a safe location.'),
+                onTap: () async {
+                  Navigator.pop(context); // Close the menu
+
+                  String? path = await DatabaseHelper.instance.backupDatabase();
+
+                  if (path != null && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Backup Saved Successfully to:\n$path'), duration: const Duration(seconds: 4)),
+                    );
+                  }
+                },
+              ),
+              const Divider(),
+
+              // RESTORE DATA BUTTON
+              ListTile(
+                leading: const Icon(Icons.restore, color: Colors.red, size: 30),
+                title: const Text('Restore from Backup', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('WARNING: This will overwrite current data.'),
+                onTap: () async {
+                  Navigator.pop(context); // Close the menu
+
+                  bool success = await DatabaseHelper.instance.restoreDatabase();
+
+                  if (success) {
+                    // Reload the dashboard numbers because the data just completely changed!
+                    _loadDashboardData();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Database Restored Successfully!'), backgroundColor: Colors.green),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -155,6 +239,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const BillingScreen()))
                       .then((_) => _loadDashboardData());
                 }),
+
+                const SizedBox(width: 20),
+                _buildActionButton('Data Backup', Icons.save_alt, Colors.deepPurple, () => _showBackupMenu(context)),
+
+
               ],
             ),
           ],

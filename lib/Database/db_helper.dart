@@ -4,6 +4,10 @@ import 'package:path/path.dart';
 import 'package:cable_billing_app/Models/Customer.dart';
 import 'package:cable_billing_app/Models/Bill.dart';
 
+import 'package:path_provider/path_provider.dart';
+
+import 'dart:io'; // Needed to copy and paste files
+import 'package:file_picker/file_picker.dart'; // Needed for the popup windows
 
 
 class DatabaseHelper {
@@ -19,20 +23,30 @@ class DatabaseHelper {
     return _db!;
   }
 
-  Future<Database> _initDB(String fileName) async {
+  Future<Database> _initDB(String filePath) async {
+    // --- NEW PRODUCTION PATH LOGIC ---
+    // 1. Find the computer's official Documents folder
+    Directory documentsDirectory = await getApplicationDocumentsDirectory();
 
-    // 2. Find where to save the file on the computer
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, fileName);
+    // 2. Create a dedicated folder just for your app inside Documents
+    String appFolderPath = join(documentsDirectory.path, 'cable_billing_app');
 
-    // 3. Open the database and create tables
+    // 3. If that folder doesn't exist yet, create it
+    await Directory(appFolderPath).create(recursive: true);
+
+    // 4. Set the final path for the .db file
+    final path = join(appFolderPath, filePath);
+    // ---------------------------------
+
     return openDatabase(
       path,
-      version: 1,
-      onCreate: (db, version) => _createDB(db, version)
-
+      version: 3, // updated to 2 - 3
+      onCreate: (db, version) => _createDB(db, version),
+      onUpgrade: _upgradeDB,
     );
   }
+
+
 
   // 4. THE SQL: Writing the actual database schema
   Future _createDB(Database db, int version) async {
@@ -46,7 +60,11 @@ class DatabaseHelper {
         contact_info TEXT,
         address TEXT NOT NULL,
         service_type TEXT NOT NULL, 
-        monthly_fee REAL NOT NULL
+        monthly_fee REAL NOT NULL,
+        connection_date TEXT NOT NULL, -- Added here for new installs
+        connection_code TEXT NOT NULL, -- new update 2
+        is_active INTEGER DEFAULT 1, -- Added for brand new installs
+        father_name TEST DEFAULT "Unknown"
       )
     ''');
 
@@ -67,6 +85,17 @@ class DatabaseHelper {
     // Note: is_paid uses INTEGER (0 for Unpaid, 1 for Paid) because SQLite does not have a boolean type.
   }
 
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // ALTER TABLE injects a new column into the existing file safely
+      await db.execute('ALTER TABLE customers ADD COLUMN connection_date TEXT DEFAULT "Unknown"');
+      await db.execute('ALTER TABLE customers ADD COLUMN connection_code Text DEFAULT "Unknown"');
+      await db.execute('ALTER TABLE customers ADD COLUMN is_active INTEGER DEFAULT 1');
+      await db.execute('ALTER TABLE customers ADD COLUMN TEXT father_name DEFAULT "Unknown"');
+    }
+  }
+
+
 
   // ==========================================
   // CUSTOMER CRUD OPERATIONS
@@ -80,15 +109,27 @@ class DatabaseHelper {
   }
 
   // READ: Get a list of all customers
-  Future<List<Customer>> getAllCustomers() async {
+  // Now accepts a filter. If filter is null, it returns everyone.
+  // If filter is 1, returns Active. If 0, returns Inactive.
+  Future<List<Customer>> getAllCustomers({int? activeFilter}) async {
     final db = await instance.database;
-    // Query the table for all rows
-    final List<Map<String, dynamic>> maps = await db.query('customers');
 
-    // Convert the List of raw database Maps into a List of Customer objects
-    return List.generate(maps.length, (i) {
-      return Customer.fromMap(maps[i]);
-    });
+    String? whereClause;
+    List<Object?>? whereArgs;
+
+    if (activeFilter != null) {
+      whereClause = 'is_active = ?';
+      whereArgs = [activeFilter];
+    }
+
+    final List<Map<String, dynamic>> maps = await db.query(
+      'customers',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'customer_id DESC', // Newest first
+    );
+
+    return List.generate(maps.length, (i) => Customer.fromMap(maps[i]));
   }
 
   // UPDATE: Change a customer's details (like their address or fee)
@@ -102,11 +143,24 @@ class DatabaseHelper {
     );
   }
 
-  // DELETE: Remove a customer entirely
-  Future<int> deleteCustomer(int id) async {
+  Future<int> deactivateCustomer(int id) async {
     final db = await instance.database;
-    return await db.delete(
+    final temp = await db.rawQuery('''
+    SELECT is_active FROM customers WHERE customer_id == ?
+    ''',[id]);
+    int isActive = temp[0]['is_active'] as int;
+    if(isActive == 1){
+      return await db.update(
+        'customers',
+        {'is_active': 0},
+        where: 'customer_id = ?',
+        whereArgs: [id],
+      );
+    }
+
+    return await db.update(
       'customers',
+      {'is_active': 1},
       where: 'customer_id = ?',
       whereArgs: [id],
     );
@@ -259,6 +313,78 @@ class DatabaseHelper {
       return 0.0;
     }
     return (result.first.values.first as num).toDouble();
+  }
+
+
+
+  // ==========================================
+  // DISASTER RECOVERY & BACKUPS
+  // ==========================================
+
+  // 1. Safely close the database connection
+  Future<void> closeDatabase() async {
+    if (_db != null) {
+      await _db!.close();
+      _db = null; // Resets it so it re-opens fresh next time
+    }
+  }
+
+  // 2. Generate a Backup File
+  Future<String?> backupDatabase() async {
+    try {
+      final db = await instance.database;
+      final originalDbPath = db.path;
+
+      // Opens a Windows/Mac "Save As" window
+      String? destinationPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Database Backup',
+        fileName: 'CabelBillingAppBackup_${DateTime.now().toIso8601String().replaceAll(':', '-')}.db',
+      );
+
+      // If the admin picked a location and didn't click cancel
+      if (destinationPath != null) {
+        File sourceFile = File(originalDbPath);
+        await sourceFile.copy(destinationPath); // Copies the file to the USB/Desktop
+        return destinationPath; // Returns the path for our success message
+      }
+    } catch (e) {
+      print("Backup Error: $e");
+    }
+    return null; // Means the user canceled or an error occurred
+  }
+
+  // 3. Restore from a Backup File
+  Future<bool> restoreDatabase() async {
+    try {
+      // Opens a Windows/Mac "Select File" window
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Select Backup File to Restore',
+        type: FileType.any, // Allows them to pick the .db file
+      );
+
+      // If the admin picked a file
+      if (result != null && result.files.single.path != null) {
+        String backupFilePath = result.files.single.path!;
+
+        // Step A: Get the current path where the app expects the database to be
+        final db = await instance.database;
+        final currentDbPath = db.path;
+
+        // Step B: CLOSE the database connection. (You cannot overwrite an open file!)
+        await closeDatabase();
+
+        // Step C: Delete the current database and copy the backup file into its place
+        File backupFile = File(backupFilePath);
+        await backupFile.copy(currentDbPath);
+
+        // Step D: We return true, and the next time the app asks for the database,
+        // it will automatically open the newly restored file!
+        return true;
+      }
+    } catch (e) {
+      print("Restore Error: $e");
+    }
+    return false;
   }
 
 

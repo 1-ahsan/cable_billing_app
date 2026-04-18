@@ -7,6 +7,10 @@ class Customer {
   final String address;
   final String serviceType;
   final double monthlyFee;
+  final String connectionDate; // update 1
+  final String connectionCode; // update 2
+  final int isActive; // update 3 // --- NEW FIELD (1 = Active, 0 = Inactive) ---
+  final String fatherName; // update 4
 
   // Constructor
   Customer({
@@ -17,6 +21,10 @@ class Customer {
     required this.address,
     required this.serviceType,
     required this.monthlyFee,
+    required this.connectionDate,
+    required this.connectionCode,
+    required this.isActive,
+    required this.fatherName,
   });
 
   // 1. Translates Dart Object to Database Map (For saving data)
@@ -29,6 +37,10 @@ class Customer {
       'address': address,
       'service_type': serviceType,
       'monthly_fee': monthlyFee,
+      'connection_date': connectionDate,
+      'connection_code': connectionCode,
+      'is_active': isActive,
+      'father_name': fatherName,
     };
   }
 
@@ -36,19 +48,27 @@ class Customer {
   factory Customer.fromMap(Map<String, dynamic> map) {
     return Customer(
       customerId: map['customer_id'],
-      name: map['name'],
-      idCardNumber: map['id_card_number'],
+      name: map['name'] ?? 'Unknown Name',
+      idCardNumber: map['id_card_number']?? 'Unknown',
       contactInfo: map['contact_info'],
-      address: map['address'],
-      serviceType: map['service_type'],
-      monthlyFee: map['monthly_fee'],
+      address: map['address'] ?? 'Unknown Address',
+      serviceType: map['service_type'] ?? 'Cable',
+      monthlyFee: map['monthly_fee'] ?? 0.0,
+      connectionDate: map['connection_date'] ?? 'Unknown',
+      connectionCode: map['connection_code'] ?? 'Unknown',
+      isActive: map['is_active'] ?? '1',
+      fatherName: map['father_name'] ?? "Unknown",
     );
   }
 
 
   @override
   String toString() {
-    return 'Customer(ID: $customerId, Name: $name, CNIC: $idCardNumber, Service: $serviceType, Fee: Rs.$monthlyFee)';
+    return 'Customer(ID: $customerId, '
+        'Name: $name, '
+        'CNIC: $idCardNumber, '
+        'Service: $serviceType, '
+        'Fee: Rs.$monthlyFee)';
   }
 
 

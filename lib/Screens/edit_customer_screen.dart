@@ -20,6 +20,12 @@ class _EditCustomerScreenState extends State<EditCustomerScreen> {
   late TextEditingController _numberController;
   late TextEditingController _feeController;
   late String _selectedService;
+  late TextEditingController _codeController;
+  late TextEditingController _fatherController;
+
+  // --- NEW: Date Picker Variables ---
+  late DateTime _selectedDate;
+  final List<String> _monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   @override
   void initState() {
@@ -31,6 +37,55 @@ class _EditCustomerScreenState extends State<EditCustomerScreen> {
     _numberController = TextEditingController(text: widget.customer.contactInfo);
     _feeController = TextEditingController(text: widget.customer.monthlyFee.toString());
     _selectedService = widget.customer.serviceType;
+
+    // Load the existing date when the screen opens
+    _selectedDate = _parseExistingDate(widget.customer.connectionDate);
+    // update 2
+    _codeController = TextEditingController(text: _parseExistingCode(widget.customer.connectionCode));
+    _fatherController = TextEditingController(text: widget.customer.fatherName);
+  }
+
+  String _parseExistingCode(String code){
+    try{
+      return code;
+    } catch (e){
+      return "Not Provided";
+    }
+    return "Not Provided";
+  }
+
+  // --- TRANSLATOR: Converts "17 Apr 2026" text back into a computer DateTime ---
+  DateTime _parseExistingDate(String dateString) {
+    try {
+      List<String> parts = dateString.split(' '); // Splits by spaces
+      if (parts.length == 3) {
+        int day = int.parse(parts[0]);
+        int month = _monthNames.indexOf(parts[1]) + 1; // Finds the month number
+        int year = int.parse(parts[2]);
+        return DateTime(year, month, day);
+      }
+    } catch (e) {
+      // If the database says "Unknown" (from older records), just use today's date safely
+    }
+    return DateTime.now();
+  }
+  // Formats the DateTime back into text for saving and displaying
+  String get _formattedDate {
+    return '${_selectedDate.day} ${_monthNames[_selectedDate.month - 1]} ${_selectedDate.year}';
+  }
+  // Opens the Calendar
+  Future<void> _pickConnectionDate() async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (pickedDate != null) {
+      setState(() {
+        _selectedDate = pickedDate;
+      });
+    }
   }
 
   void _updateCustomer() async {
@@ -44,6 +99,10 @@ class _EditCustomerScreenState extends State<EditCustomerScreen> {
         address: _addressController.text,
         serviceType: _selectedService,
         monthlyFee: double.parse(_feeController.text),
+        connectionDate: _formattedDate, // --- NEW: Include the edited date! ---
+        connectionCode: _codeController.text,
+        isActive: widget.customer.isActive,
+        fatherName: _fatherController.text,
       );
 
       await DatabaseHelper.instance.updateCustomer(updatedCustomer);
@@ -67,6 +126,8 @@ class _EditCustomerScreenState extends State<EditCustomerScreen> {
             children: [
               TextFormField(controller: _nameController, decoration: const InputDecoration(labelText: 'Customer Name')),
               const SizedBox(height: 10),
+              TextFormField(controller: _fatherController, decoration: const InputDecoration(labelText: 'Father Name')),
+              const SizedBox(height: 10),
               TextFormField(controller: _idCardController, decoration: const InputDecoration(labelText: 'ID Card Number')),
               const SizedBox(height: 10),
               TextFormField(controller: _numberController, decoration: const InputDecoration(labelText: 'Phone Number')),
@@ -80,7 +141,26 @@ class _EditCustomerScreenState extends State<EditCustomerScreen> {
                 onChanged: (newValue) => setState(() => _selectedService = newValue!),
               ),
               const SizedBox(height: 10),
+              TextFormField(controller: _codeController, decoration: const InputDecoration(labelText: 'Connection Code')),
+              const SizedBox(height: 10),
               TextFormField(controller: _feeController, decoration: const InputDecoration(labelText: 'Monthly Fee (Rs.)')),
+              const SizedBox(height: 10),
+
+              // --- NEW: CONNECTION DATE PICKER UI ---
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Connection Date: $_formattedDate',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _pickConnectionDate,
+                    icon: const Icon(Icons.calendar_today),
+                    label: const Text('Change Date'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: _updateCustomer,
